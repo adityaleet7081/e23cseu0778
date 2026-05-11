@@ -55,3 +55,70 @@ Use **WebSockets** (Socket.io) for real-time delivery:
 - When a new notification is created, emit a `new_notification` event to the student's socket room
 - Each student connects with their studentId and joins a personal room
 - Server emits to `room:studentId` on new notification
+
+# Stage 2
+
+## Recommended Database: PostgreSQL
+
+### Why PostgreSQL?
+- Relational data fits perfectly (students, notifications have clear relationships)
+- Supports indexing for fast queries on large datasets
+- ACID compliant — no data loss for critical notifications
+- Supports enums natively for notification types
+
+## Database Schema
+
+```sql
+CREATE TABLE students (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TYPE notification_type AS ENUM ('Placement', 'Event', 'Result');
+
+CREATE TABLE notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  type notification_type NOT NULL,
+  message VARCHAR(255) NOT NULL,
+  is_read BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+## Problems as Data Volume Increases
+1. Fetching all notifications per student becomes slow (full table scan)
+2. Unread count queries get expensive
+3. Write bottlenecks when sending bulk notifications
+
+## Solutions
+1. **Index** on `student_id` and `created_at` for fast lookups
+2. **Pagination** — never fetch all notifications at once
+3. **Read replicas** — separate read and write traffic
+
+## SQL Queries
+
+### Fetch all unread notifications for a student
+```sql
+SELECT * FROM notifications
+WHERE student_id = 'uuid-here'
+AND is_read = false
+ORDER BY created_at DESC
+LIMIT 20;
+```
+
+### Mark notification as read
+```sql
+UPDATE notifications
+SET is_read = true
+WHERE id = 'notification-uuid';
+```
+
+### Get unread count
+```sql
+SELECT COUNT(*) FROM notifications
+WHERE student_id = 'uuid-here'
+AND is_read = false;
+```
