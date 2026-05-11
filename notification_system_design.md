@@ -122,3 +122,53 @@ SELECT COUNT(*) FROM notifications
 WHERE student_id = 'uuid-here'
 AND is_read = false;
 ```
+
+# Stage 3
+
+## Is the query accurate?
+```sql
+SELECT * FROM notifications
+WHERE studentID = 1042 AND isRead = false
+ORDER BY createdAt DESC;
+```
+Yes it is accurate but has performance issues at scale.
+
+## Why is it slow?
+- `SELECT *` fetches all columns including large fields unnecessarily
+- No index on `studentID` or `isRead` — causes full table scan
+- With 50,000 students and 5,000,000 notifications this is very expensive
+
+## What would I change?
+```sql
+SELECT id, type, message, created_at FROM notifications
+WHERE student_id = 1042 AND is_read = false
+ORDER BY created_at DESC
+LIMIT 20;
+```
+- Select only needed columns
+- Add LIMIT for pagination
+- Add indexes (see below)
+
+## Computation Cost
+- Without index: O(n) full table scan — very slow
+- With index: O(log n) — fast even at 5M rows
+
+## Should we add indexes on every column?
+**No.** This is bad advice because:
+- Indexes slow down INSERT and UPDATE operations
+- They consume extra storage
+- Only index columns used in WHERE, ORDER BY, JOIN clauses
+
+## Correct indexes to add:
+```sql
+CREATE INDEX idx_notifications_student_id ON notifications(student_id);
+CREATE INDEX idx_notifications_is_read ON notifications(is_read);
+CREATE INDEX idx_notifications_created_at ON notifications(created_at DESC);
+```
+
+## Query to find students who got Placement notification in last 7 days
+```sql
+SELECT DISTINCT student_id FROM notifications
+WHERE type = 'Placement'
+AND created_at >= NOW() - INTERVAL '7 days';
+```
