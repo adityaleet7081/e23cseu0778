@@ -247,3 +247,23 @@ No. They should be separate because:
 - Email delivery can be async and retried independently
 - If coupled, a failed email would rollback the DB save too
 - Students would never see notification in-app either
+
+
+# Stage 6
+
+## Priority Inbox Approach
+
+Priority score is calculated as:
+- Placement = weight 3 (highest)
+- Result = weight 2
+- Event = weight 1 (lowest)
+
+Score = type_weight * 10000000000000 + timestamp_milliseconds
+
+This ensures type always dominates, recency breaks ties within same type.
+
+## Maintaining top 10 efficiently as new notifications arrive
+- Use a Min-Heap of size 10
+- When new notification arrives, calculate its priority score
+- If score > heap minimum, replace minimum with new notification
+- Heap always contains top 10 — O(log 10) = O(1) per insertion
