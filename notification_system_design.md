@@ -172,3 +172,36 @@ SELECT DISTINCT student_id FROM notifications
 WHERE type = 'Placement'
 AND created_at >= NOW() - INTERVAL '7 days';
 ```
+
+# Stage 4
+
+## Problem
+Notifications are fetched on every page load for every student.
+This is hammering the DB and causing slow user experience.
+
+## Solution: Redis Caching
+
+### How it works:
+- First request → fetch from DB → store in Redis with TTL of 60 seconds
+- Next requests within 60 seconds → serve from Redis (no DB hit)
+- When new notification arrives → invalidate that student's cache
+
+### Implementation Strategy:
+GET /api/notifications/:studentId
+  → Check Redis cache for key "notifications:studentId"
+  → If cache HIT → return cached data
+  → If cache MISS → query DB → store in Redis → return data
+
+## Tradeoffs
+
+| Strategy | Pros | Cons |
+|---|---|---|
+| Redis Cache | Very fast reads, reduces DB load | Stale data possible, extra infra |
+| Pagination | Reduces data transfer | Doesn't reduce DB queries |
+| DB Read Replica | Scales reads horizontally | Complex setup, replication lag |
+
+## Recommended Approach
+Combine Redis caching + Pagination:
+- Cache per student with 60s TTL
+- Paginate results 20 per page
+- Invalidate cache on new notification or read status change
