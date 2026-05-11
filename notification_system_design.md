@@ -205,3 +205,45 @@ Combine Redis caching + Pagination:
 - Cache per student with 60s TTL
 - Paginate results 20 per page
 - Invalidate cache on new notification or read status change
+
+
+# Stage 5
+
+## Problem with current implementation
+
+Shortcomings:
+1. Sequential loop — 50,000 students processed one by one = very slow
+2. If send_email fails at student 200, remaining 49,800 get no email
+3. No retry mechanism for failed emails
+4. DB insert happens per student — 50,000 individual DB writes
+5. Everything tightly coupled — one failure breaks everything
+
+## What happened when send_email failed at 200 students?
+Students 201 to 50,000 never got the email.
+No way to know which students failed.
+No retry was attempted.
+
+## Redesigned Solution: Message Queue + Batch Processing
+
+New pseudocode:
+
+    function notify_all(student_ids, message):
+        bulk_insert_to_db(student_ids, message)
+        for student_id in student_ids:
+            queue.push({ student_id, message })
+
+    function worker():
+        while queue is not empty:
+            job = queue.pop()
+            try:
+                send_email(job.student_id, job.message)
+                push_to_app(job.student_id, job.message)
+            catch error:
+                queue.retry(job, max_retries=3)
+
+## Should DB save and email happen together?
+No. They should be separate because:
+- DB save should happen immediately and reliably
+- Email delivery can be async and retried independently
+- If coupled, a failed email would rollback the DB save too
+- Students would never see notification in-app either
